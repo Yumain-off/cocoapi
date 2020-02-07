@@ -266,7 +266,7 @@ class COCOeval:
                 if len(self.label_info_on_range[str(catId)]) == 0:
                     self.label_info_on_range[str(catId)].append(
                         {'aRng': aRng, 'aRng_label': self.params.areaRngLbl[self.params.areaRng.index(aRng)],
-                         'gt_count': 0, 'det_count': {}})
+                         'gt_count': 0})
                 else:
                     try:
                         cur_range = [r for r in self.label_info_on_range[str(catId)] if r['aRng'] == aRng][0]
@@ -274,7 +274,7 @@ class COCOeval:
                     except IndexError:
                         self.label_info_on_range[str(catId)].append(
                             {'aRng': aRng, 'aRng_label': self.params.areaRngLbl[self.params.areaRng.index(aRng)],
-                             'gt_count': 0, 'det_count': {}})
+                             'gt_count': 0})
 
                 self.label_info_on_range[str(catId)][cur_range_index]['gt_count'] += 1
 
@@ -323,24 +323,6 @@ class COCOeval:
         # set unmatched detections outside of area range to ignore
         a = np.array([d['area'] < aRng[0] or d['area'] > aRng[1] for d in dt]).reshape((1, len(dt)))
         dtIg = np.logical_or(dtIg, np.logical_and(dtm == 0, np.repeat(a, T, 0)))
-        try:
-            gtm_zero_count = np.count_nonzero(gtm)
-            if gtm_zero_count != 0:
-                for tind, t in enumerate(p.iouThrs):
-                    for gs in gtm:
-                        if str(t) not in self.label_info_on_range[str(catId)][cur_range_index]['det_count'].keys():
-                            self.label_info_on_range[str(catId)][cur_range_index]['det_count'][str(t)] = {'tps': []}
-                        for g in gs:
-                            if g != 0 and g not in self.label_info_on_range[str(catId)][cur_range_index]['det_count'][str(t)]['tps']:
-                                self.label_info_on_range[str(catId)][cur_range_index]['det_count'][str(t)]['tps'].append(round(g))
-                        
-            else:
-                for tind, t in enumerate(p.iouThrs):
-                    if str(t) not in self.label_info_on_range[str(catId)][cur_range_index]['det_count'].keys():
-                        self.label_info_on_range[str(catId)][cur_range_index]['det_count'][str(t)] = {'tps': []}
-        except KeyError:
-            # No detection for a catId
-            pass
         # store results for given image and category
         return {
             'image_id': imgId,
@@ -464,7 +446,7 @@ class COCOeval:
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format(toc - tic))
 
-    def summarize(self, value_per_category=False, verbose_value_per_category=True):
+    def summarize(self, get_eval_stats=False, verbose_value_per_category=False):
         '''
         Compute and display summary metrics for evaluation results.
         Note this function can *only* be applied on the default parameter setting
@@ -512,27 +494,17 @@ class COCOeval:
                             lookup_area = [r for r in self.label_info_on_range[str(catId)]
                                            if r['aRng_label'] == areaRng][0]
                             try:
-                                if iouThr is not None:
-                                    tps = len(lookup_area['det_count'][str(iouThr)]['tps'])
-                                else:
-                                    unique_ids = np.unique(np.concatenate([thrs['tps'] for thrs in lookup_area['det_count'].values()]))
-                                    tps = len(unique_ids)
-                                fps = round(round(tps/label_ap) - tps - np.spacing(1))
-                            except KeyError:
-                                tps = 0
-                                fps = 0
-                            try:
                                 total_gt_count_for_range = lookup_area['gt_count']
                             except KeyError:
                                 total_gt_count_for_range = 0
                         except (IndexError, KeyError):
-                            tps = 0
                             total_gt_count_for_range = 0
-                            fps = 0
-                        print('category {} with AP of {} || {} in the ground truth. '
-                              '{} true positives. '
-                              '{} false positives.'.format(i, label_ap, total_gt_count_for_range,
-                                                           tps, fps))
+                        print('category {} with AP of {} || {} in the ground truth.'.format(i, label_ap, total_gt_count_for_range,))
+                        for lookup_score in range(20, 100, 10):
+                            tweak_prec_per_score = s[:, lookup_score:, i, :]
+                            tweak_prec_per_score[tweak_prec_per_score < 0.] = 0.
+                            label_ap = np.mean(tweak_prec_per_score)
+                            print('category {} with AP of {} for scores > {}. '.format(i, label_ap, lookup_score/100))
                         avg_ap += np.mean(tweak_prec)
                     print('(all categories) mAP : {}'.format(avg_ap / len(p.catIds)))
 
@@ -588,8 +560,8 @@ class COCOeval:
         elif iouType == 'keypoints':
             summarize = _summarizeKps
         self.stats = summarize(verbose_value_per_category)
-        if value_per_category:
-            return self.label_info_on_range
+        if get_eval_stats:
+            return self.eval
         else:
             return None
 
