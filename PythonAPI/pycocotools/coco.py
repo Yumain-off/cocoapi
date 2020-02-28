@@ -46,6 +46,7 @@ __version__ = '2.0'
 
 import json
 import time
+import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
@@ -313,7 +314,13 @@ class COCO:
 
         print('Loading and preparing results...')
         tic = time.time()
-        if type(resFile) == str or (PYTHON_VERSION == 2 and type(resFile) == bytes):
+
+        # Check result type in a way compatible with Python 2 and 3.
+        if PYTHON_VERSION == 2:
+            is_string =  isinstance(resFile, basestring)  # Python 2
+        elif PYTHON_VERSION == 3:
+            is_string = isinstance(resFile, str)  # Python 3
+        if is_string:
             anns = json.load(open(resFile))
         elif type(resFile) == np.ndarray:
             anns = self.loadNumpyAnnotations(resFile)
